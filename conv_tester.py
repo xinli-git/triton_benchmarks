@@ -34,21 +34,28 @@ class ConvBench(Bench):
     @property
     def implementations(self):
         def torch_conv(data, weight, stride, dilation, groups):
-            return _torch_conv(data, weight, None, stride, 0, dilation, groups)
+            return torch.conv2d(data, weight, None, stride, (0, 0), dilation, groups=groups)
 
-        def triton_conv(data, weight, stride, dilation, groups):
-            return _triton_conv(data, weight, None, stride, (0, 0), dilation, transposed=False,
-                    output_padding=(0, 0), groups=groups)
+        triton_conv = torch.compile(torch_conv, mode='max-autotune')
 
-        def hidet_conv(data, weight, stride, dilation, groups):
-            data = hidet.from_torch(data)
-            weight = hidet.from_torch(weight)
-            with hidet.graph.PassContext() as ctx:
-                ctx.set_parallel_k(search=True)
-                ctx.set_mma('mma')
-                return _hidet_conv(data, weight, stride, dilation, groups)
+        hidet.torch.dynamo_config.search_space(2)
+        hidet.torch.dynamo_config.use_tensor_core()
+        hidet.torch.dynamo_config.parallel_k('search')
+        hidet.torch.dynamo_config.use_cuda_graph()
+        hidet_conv = torch.compile(torch_conv, backend='hidet')
+        # def triton_conv(data, weight, stride, dilation, groups):
+        #     return _torch_conv(data, weight, None, stride, (0, 0), dilation, transposed=False,
+        #             output_padding=(0, 0), groups=groups)
 
-        return torch_conv, triton_conv, hidet_conv
+        # def hidet_conv(data, weight, stride, dilation, groups):
+        #     data = hidet.from_torch(data)
+        #     weight = hidet.from_torch(weight)
+        #     with hidet.graph.PassContext() as ctx:
+        #         ctx.set_parallel_k(search=True)
+        #         ctx.set_mma('mma')
+        #         return _hidet_conv(data, weight, stride, dilation, groups)
+
+        return [("torch", torch_conv), ("triton", triton_conv), ("hidet", hidet_conv)]
 
 
     def __str__(self):
@@ -75,18 +82,24 @@ class ConvBench(Bench):
         inp = torch.empty(self.inp_shape, dtype=dtype, device=self.device)
         weight = torch.empty(self.data_shape, dtype=dtype, device=self.device)
 
-        return inp, weight
+        return inp, weight, self.stride, self.dilation, self.groups
 
 if __name__ == "__main__":
 
-    inputs = [(1, 3, 224, 224,)]
-    filters = [(3, 64, 7, 7)]
+    inp_filters = [
+            [(1, 3, 224, 224,), (64, 3, 7, 7)],
+            [(1, 64, 64, 64,), (128, 64, 3, 3)],
+            [(1, 128, 32, 32,), (256, 128, 1, 1)],
+            [(1, 256, 16, 16,), (512, 256, 3, 3)],
+            [(1, 512, 8, 8,), (2048, 512, 1, 1)],
+            ]
     dilation = [(1, 1)]
     stride = [(2, 2), (1, 1)]
     groups = [1]
 
-    for config in itertools.product(inputs, filters, dilation, stride, groups):
+    for config in itertools.product(inp_filters, dilation, stride, groups):
         print(config)
-        bench = ConvBench(*config)
+        (inp, fil), dilation, stride, groups = config
+        bench = ConvBench(inp, fil, dilation, stride, groups)
         bench.run("benchmarks")
 
