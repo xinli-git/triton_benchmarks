@@ -58,10 +58,10 @@ class GemmBench(Bench):
             graph_opt: hidet.FlowGraph = hidet.graph.optimize(graph)
             cuda_graph = graph_opt.cuda_graph()
 
-        def hidet_mm(inp_a, inp_b):
+        def hidet_gemm(inp_a, inp_b):
             return cuda_graph.run()
 
-        return [("torch", torch_mm), ("triton", triton_mm), ("hidet", hidet_mm)]
+        return [("torch", torch_gemm), ("triton", triton_gemm), ("hidet", hidet_gemm)]
 
 
     def __str__(self):
@@ -90,8 +90,8 @@ class GemmBench(Bench):
 
 if __name__ == "__main__":
     import sys
-    Ms = [1, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-    Ns = [1, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    Ms = [1, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+    Ns = [8, 16, 32, 64, 128, 256, 512]
     Ks = [32, 64, 128, 256, 512, 1024]
     dtype = ['float16', 'float32']
     sweep_config = list(itertools.product(Ms, Ns, Ks, dtype))

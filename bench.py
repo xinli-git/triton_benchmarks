@@ -5,6 +5,8 @@ import torch
 import hidet
 import logging
 
+from torch import _dynamo
+
 class Bench:
 
     def __init__(self):
@@ -58,6 +60,17 @@ class Bench:
     def data(self):
         raise NotImplementedError
 
+    @staticmethod
+    def in_df(attr, df):
+
+        for k, v in attr.items():
+            cond = (df[k] == v)
+            if not cond.any():
+                return False
+            df = (df[cond])
+
+        return len(df) == 3
+
     def run(self, root_dir):
 
         hidet.option.cache_dir(root_dir)
@@ -66,6 +79,9 @@ class Bench:
         output = root_dir / self.output_file
         if output.exists():
             df = pd.read_csv(output)
+            if self.in_df(self.attrs, df):
+                print("Skipped {}, already exists".format(self))
+                return
         else:
             df = pd.DataFrame(columns=[*self.attrs.keys(), 'impl', 'latency', 'min', 'max'])
 
