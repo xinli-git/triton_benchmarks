@@ -89,7 +89,13 @@ class Bench:
         for name, impl in self.implementations:
             assert callable(impl)
             torch._dynamo.reset()
-            latency, minn, maxx, _ = self.bench(impl, data)
+            try:
+                latency, minn, maxx, _ = self.bench(impl, data)
+            except Exception as er:
+                print(er)
+                latency = -1
+                minn = -1
+                maxx = -1
 
             entry = self.attrs.copy()
             entry['impl'] = name
